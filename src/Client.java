@@ -25,6 +25,8 @@ public class Client {
 
             Message.ResponseMessage response = (Message.ResponseMessage) is.readObject();
 
+            s.close();
+
             return response;
         } catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
@@ -59,7 +61,7 @@ public class Client {
     private void put(String key, String value) {
         updateTimestamp();
 
-        Message message = new Message(Operation.PUT, key, value);
+        Message message = new Message("PUT", key, value);
         message.setClientTimestamp(getTimestamp());
 
         String[] server = getRandomServer();
@@ -73,7 +75,7 @@ public class Client {
     private void get(String key) {
         updateTimestamp();
 
-        Message message = new Message(Operation.GET, key);
+        Message message = new Message("GET", key);
         message.setClientTimestamp(getTimestamp());
 
         String[] server = getRandomServer();
@@ -108,7 +110,7 @@ public class Client {
 
     public static void main(String[] args) {
         try {
-            if (args.length < 6) {
+            if (args.length < 3) {
                 throw new IllegalArgumentException("Usage: java Client <IP>:<port> <IP>:<port> <IP>:<port>");
             }
 
