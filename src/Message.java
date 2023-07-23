@@ -1,30 +1,44 @@
 import java.io.Serializable;
 
 public class Message implements Serializable {
-    private String operation;
+    enum Operation {
+        PUT,
+        GET,
+        REPLICATION
+    }
+
+    enum ResponseType {
+        PUT_OK,
+        REPLICATION_OK
+    }
+
+    private Operation operation;
     private String key;
     private String value;
+    private ResponseType response;
     private long clientTimestamp;
     protected long serverTimestamp;
 
-    public static class ResponseMessage extends Message {
-        public ResponseMessage(String operation, long serverTimestamp) {
-            super(operation);
-            setServerTimestamp(serverTimestamp);
-        }
-    }
-
     /**
-     * Create an instance of Message for PUT operation
+     * Create an instance of Message for PUT and REPLICATION operations.
      *
      * @param operation PUT
-     * @param key the key to store
-     * @param value the value to store
+     * @param key the key to insert
+     * @param value the value to insert
      */
-    public Message(String operation, String key, String value) {
+    public Message(Operation operation, String key, String value) {
         this.operation = operation;
         this.key = key;
         this.value = value;
+    }
+
+    /**
+     * Create an instance of Message for response operation.
+     *
+     * @param response the response type
+     */
+    public Message(ResponseType response) {
+        this.response = response;
     }
 
     /**
@@ -34,44 +48,78 @@ public class Message implements Serializable {
      * @param key the key to request
      */
     public Message(String operation, String key) {
-        this.operation = operation;
-        this.key = key;
-        this.value = null;
+        // this.operation = operation;
+        // this.key = key;
+        // this.value = null;
     }
 
     /**
-     * Create an instance of Message for response
-     *
-     * @param value PUT_OK or the value retrieved
+     * Get the response
+     * @return the response type
      */
-    public Message(String value) {
-        this.value = value;
+    public ResponseType getResponse() {
+        return response;
     }
 
-    public String getOperation() {
+    /**
+     * Get the operation
+     *
+     * @return the operation type
+     */
+    public Operation getOperation() {
         return operation;
     }
 
+    /**
+     * Get the key.
+     *
+     * @return the key
+     */
     public String getKey() {
         return key;
     }
 
+    /**
+     * Get the value.
+     *
+     * @return the value
+     */
     public String getValue() {
         return value;
     }
 
+    /**
+     * Get the client timestamp.
+     *
+     * @return the client timestamp
+     */
     public long getClientTimestamp() {
         return clientTimestamp;
     }
 
+    /**
+     * Set the client timestamp.
+     *
+     * @param clientTimestamp the client timestamp
+     */
     public void setClientTimestamp(long clientTimestamp) {
         this.clientTimestamp = clientTimestamp;
     }
 
+    /**
+     * Get the server timestamp.
+     *
+     * @return the server timestamp
+     */
     public long getServerTimestamp() {
         return this.serverTimestamp;
     }
 
+    /**
+     * Set the server timestamp.
+     *
+     * @param serverTimestamp the server timestamp
+     */
     public void setServerTimestamp(long serverTimestamp) {
         this.serverTimestamp = serverTimestamp;
     }
