@@ -15,6 +15,8 @@ public class Message implements Serializable {
     private Operation operation;
     private String key;
     private String value;
+    private String clientIP;
+    private int clientPort;
     private ResponseType response;
     private long clientTimestamp;
     protected long serverTimestamp;
@@ -26,10 +28,12 @@ public class Message implements Serializable {
      * @param key the key to insert
      * @param value the value to insert
      */
-    public Message(Operation operation, String key, String value) {
+    public Message(Operation operation, String key, String value, String clientIP, int clientPort) {
         this.operation = operation;
         this.key = key;
         this.value = value;
+        this.clientIP = clientIP;
+        this.clientPort = clientPort;
     }
 
     /**
@@ -86,6 +90,24 @@ public class Message implements Serializable {
      */
     public String getValue() {
         return value;
+    }
+
+    /**
+     * Get the client IP address.
+     *
+     * @return the client IP address
+     */
+    public String getClientIP() {
+        return clientIP;
+    }
+
+    /**
+     * Get the client port.
+     *
+     * @return the client port
+     */
+    public int getClientPort() {
+        return clientPort;
     }
 
     /**

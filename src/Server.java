@@ -20,7 +20,7 @@ public class Server {
     private List<String[]> followers = new ArrayList<>();
 
     /**
-     * Thread the handle cliente requests.
+     * Thread the handle client requests.
      */
     public class ServerServiceThread extends Thread {
         private Socket node = null;
@@ -89,17 +89,19 @@ public class Server {
     private Message handlePut(Message message) {
         String key = message.getKey();
         String value = message.getValue();
+        String clientIP = message.getClientIP();
+        int clientPort = message.getClientPort();
         long timestamp = message.getClientTimestamp();
 
         if (isLeader()) {
-            System.out.printf("Cliente %s:%s PUT key:%s value:%s%n", serverIP, serverPort, key, value);
+            System.out.printf("Cliente %s:%s PUT key:%s value:%s%n", clientIP, clientPort, key, value);
 
             keyValueStore.put(key, value);
             timestamps.put(key, timestamp);
             
-            replicate(key, value, timestamp);
+            replicate(message);
             
-            System.out.printf("Enviando PUT_OK ao Cliente %s:%s da key:%s ts:%d%n", serverIP, serverPort, key, timestamp);
+            System.out.printf("Enviando PUT_OK ao Cliente %s:%s da key:%s ts:%d%n", clientIP, clientPort, key, timestamp);
 
             Message response = new Message(Message.ResponseType.PUT_OK);
             response.setServerTimestamp(timestamp);
@@ -107,7 +109,7 @@ public class Server {
             return response;
         } else {
             System.out.printf("Encaminhando PUT key:%s value:%s%n", key, value);
-            return forwardPutToLeader(key, value, timestamp);
+            return forwardPutToLeader(message);
         }
     }
 
@@ -119,17 +121,23 @@ public class Server {
      * @param timestamp the timestamp
      * @return PUT_OK
      */
-    private Message forwardPutToLeader(String key, String value, long timestamp) {
+    private Message forwardPutToLeader(Message message) {
+        String key = message.getKey();
+        String value = message.getValue();
+        String clientIP = message.getClientIP();
+        int clientPort = message.getClientPort();
+        long timestamp = message.getClientTimestamp();
+
         try {
             Socket s = new Socket(leaderIP, leaderPort);
 
             ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
             ObjectInputStream is = new ObjectInputStream(s.getInputStream());
 
-            Message message = new Message(Message.Operation.PUT, key, value);
-            message.setClientTimestamp(timestamp);
+            Message forwardedMessage = new Message(Message.Operation.PUT, key, value, clientIP, clientPort);
+            forwardedMessage.setClientTimestamp(timestamp);
 
-            os.writeObject(message);
+            os.writeObject(forwardedMessage);
 
             Message response = (Message) is.readObject();
 
@@ -148,7 +156,13 @@ public class Server {
      * @param value the value to insert
      * @param timestamp the associated timestamp
      */
-    private void replicate(String key, String value, long timestamp) {
+    private void replicate(Message message) {
+        String key = message.getKey();
+        String value = message.getValue();
+        String clientIP = message.getClientIP();
+        int clientPort = message.getClientPort();
+        long timestamp = message.getClientTimestamp();
+
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         for (String[] follower : followers) {
@@ -163,9 +177,9 @@ public class Server {
                         ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
                         ObjectInputStream is = new ObjectInputStream(s.getInputStream());
                         
-                        Message message = new Message(Message.Operation.REPLICATION, key, value);
-                        message.setServerTimestamp(timestamp);
-                        os.writeObject(message);
+                        Message repMessage = new Message(Message.Operation.REPLICATION, key, value, clientIP, clientPort);
+                        repMessage.setServerTimestamp(timestamp);
+                        os.writeObject(repMessage);
 
                         Message response = (Message) is.readObject();
 

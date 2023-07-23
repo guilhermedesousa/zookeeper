@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,8 @@ import java.util.Random;
 import java.lang.StringBuilder;
 
 public class Client {
+    private String clientIP;
+    private int clientPort;
     private List<String[]> serverList;
     private long timestamp;
     private Map<String, Long> keyTimestamps;
@@ -58,7 +61,7 @@ public class Client {
     private void put(String key, String value) {
         updateTimestamp();
 
-        Message message = new Message(Message.Operation.PUT, key, value);
+        Message message = new Message(Message.Operation.PUT, key, value, clientIP, clientPort);
         message.setClientTimestamp(getTimestamp());
 
         String[] server = getRandomServer();
@@ -166,18 +169,38 @@ public class Client {
         return reader.readLine();
     }
 
+    /**
+     * Set client Info.
+     *
+     * @param clientInfo the client info
+     */
+    private void setClientInfo(String clientInfo) {
+        this.clientIP = clientInfo.split(":")[0];
+        this.clientPort = Integer.parseInt(clientInfo.split(":")[1]);
+    }
+
+    /**
+     * Get the client IP address.
+     *
+     * @return the client IP address
+     */
+    public String getClientIP() {
+        return clientIP;
+    }
+
+    /**
+     * Get the client port.
+     *
+     * @return the client port
+     */
+    public int getClientPort() {
+        return clientPort;
+    }
+
     public static void main(String[] args) {
         try {
-            if (args.length < 3) {
-                throw new IllegalArgumentException("Usage: java Client <IP>:<port> <IP>:<port> <IP>:<port>");
-            }
-
             Client client = new Client();
-
-            for (int i = 0; i < args.length; i++) {
-                client.serverList.add(args[i].split(":"));
-            }
-
+            
             while (true) {
                 String clientInput = getClientInput();
 
@@ -187,16 +210,23 @@ public class Client {
                 }
 
                 String[] inputParts = clientInput.split(" ");
+                String operation = inputParts[0];
 
-                boolean isGET = inputParts.length == 1;
-                boolean isPUT = inputParts.length == 2;
+                if (operation.equals("INIT")) {
+                    String clientInfo = inputParts[1];
+                    String[] serverInfos = Arrays.copyOfRange(inputParts, 2, inputParts.length);
 
-                if (isPUT) {
-                    String key = inputParts[0];
-                    String value = inputParts[1];
+                    client.setClientInfo(clientInfo);
+
+                    for (String server : serverInfos) {
+                        client.serverList.add(server.split(":"));
+                    }
+                } else if (operation.equals("PUT")) {
+                    String key = inputParts[1];
+                    String value = inputParts[2];
                     client.put(key, value);
-                } else if (isGET) {
-                    String key = inputParts[0];
+                } else if (operation.equals("GET")) {
+                    String key = inputParts[1];
                     client.get(key);
                 }
             }
