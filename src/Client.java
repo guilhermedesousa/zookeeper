@@ -1,4 +1,5 @@
 import java.io.*;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -6,8 +7,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-
 import java.lang.StringBuilder;
+import com.google.gson.Gson;
 
 public class Client {
     private String clientIP;
@@ -26,30 +27,37 @@ public class Client {
     }
 
     /**
-     * Send the client request to the specified server.
+     * Get the client timestamp.
      *
-     * @param IP the server IP
-     * @param port the server port
-     * @param message the message from the client
-     * @return the server response
+     * @return the client timestamp
      */
-    private Message send(String IP, int port, Message message) {
-        try {
-            Socket s = new Socket(IP, port);
+    public long getTimestamp() {
+        return timestamp;
+    }
 
-            ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
-            ObjectInputStream is = new ObjectInputStream(s.getInputStream());
+    /**
+     * Update the client timestamp with the current time.
+     */
+    public void updateTimestamp() {
+        this.timestamp = System.currentTimeMillis();
+    }
 
-            os.writeObject(message);
+    /**
+     * Get the client IP address.
+     *
+     * @return the client IP address
+     */
+    public String getClientIP() {
+        return clientIP;
+    }
 
-            Message response = (Message) is.readObject();
-
-            s.close();
-
-            return response;
-        } catch (IOException | ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
+    /**
+     * Get the client port.
+     *
+     * @return the client port
+     */
+    public int getClientPort() {
+        return clientPort;
     }
 
     /**
@@ -68,11 +76,83 @@ public class Client {
         String serverIP = server[0];
         int serverPort = Integer.parseInt(server[1]);
 
-        Message response = send(serverIP, serverPort, message);
+        sendPut(serverIP, serverPort, message);
+    }
 
-        if (response.getResponse() == Message.ResponseType.PUT_OK) {
+    /**
+     * Perform the GET operation.
+     *
+     * @param key the key to search
+     */
+    private void get(String key) {
+        updateTimestamp();
+
+        Message message = new Message(Message.Operation.GET, key, clientIP, clientPort);
+        long lastTimestamp = keyTimestamps.getOrDefault(key, 0L);
+        message.setClientTimestamp(lastTimestamp);
+
+        String[] server = getRandomServer();
+        String serverIP = server[0];
+        int serverPort = Integer.parseInt(server[1]);
+
+        Message response = sendGet(serverIP, serverPort, message);
+
+        if (response.getResponse() == Message.ResponseType.GET_OK) {
             keyTimestamps.put(key, response.getServerTimestamp());
-            printPUT(key, value, response.getServerTimestamp(), serverIP, serverPort);
+            printGET(key, response.getValue(), getTimestamp(), response.getServerTimestamp(), serverIP, serverPort);
+        }
+    }
+
+    /**
+     * Send the client PUT request to the specified server.
+     *
+     * @param IP the server IP
+     * @param port the server port
+     * @param message the message to send
+     */
+    private void sendPut(String IP, int port, Message message) {
+        try {
+            Socket s = new Socket(IP, port);
+
+            OutputStream os = s.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(os);
+
+            writer.writeUTF(message.toJson());
+
+            s.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Send the client GET request to the specified server.
+     *
+     * @param IP the server IP
+     * @param port the server port
+     * @param message the message to send
+     * @return the server response
+     */
+    private Message sendGet(String IP, int port, Message message) {
+        try {
+            Socket s = new Socket(IP, port);
+
+            OutputStream os = s.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(os);
+            
+            InputStream is = s.getInputStream();
+            DataInputStream reader = new DataInputStream(is);
+            
+            writer.writeUTF(message.toJson());
+
+            String responseJson = reader.readUTF();
+            Message response = Message.fromJson(responseJson);
+
+            s.close();
+
+            return response;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -97,7 +177,17 @@ public class Client {
         System.out.println(sb.toString());
     }
 
-    private void printGET(String key, String value, long clientTimestamp, long serverTimestamp, String IP, String port) {
+    /**
+     * Print the response related to the GET operation.
+     *
+     * @param key the key searched
+     * @param value the value retrieved
+     * @param clientTimestamp the client timestamp
+     * @param serverTimestamp the server timestamp
+     * @param IP the server IP address
+     * @param port the server port
+     */
+    private void printGET(String key, String value, long clientTimestamp, long serverTimestamp, String IP, int port) {
         StringBuilder sb = new StringBuilder();
 
         sb.append("GET ");
@@ -110,24 +200,6 @@ public class Client {
         System.out.println(sb.toString());
     }
 
-    private void get(String key) {
-        // updateTimestamp();
-
-        // Message message = new Message("GET", key);
-        // Long lastTimestamp = keyTimestamps.getOrDefault(key, 0L);
-        // message.setClientTimestamp(lastTimestamp);
-
-        // String[] server = getRandomServer();
-        // String serverIP = server[0];
-        // String serverPort = server[1];
-
-        // Message.ResponseMessage response = send(serverIP, serverPort, message);
-        // if (!response.getValue().equals("TRY_OTHER_SERVER_OR_LATER")) {
-        //     keyTimestamps.put(key, response.getServerTimestamp());
-        //     printGET(key, response.getValue(), response.getClientTimestamp(), response.getServerTimestamp(), serverIP, serverPort);
-        // }
-    }
-
     /**
      * Get a random server from the server list.
      *
@@ -138,22 +210,6 @@ public class Client {
         int randomIndex = random.nextInt(serverList.size());
 
         return serverList.get(randomIndex);
-    }
-    
-    /**
-     * Get the client timestamp.
-     *
-     * @return the client timestamp
-     */
-    public long getTimestamp() {
-        return timestamp;
-    }
-
-    /**
-     * Update the client timestamp with the current time.
-     */
-    public void updateTimestamp() {
-        this.timestamp = System.currentTimeMillis();
     }
 
     /**
@@ -180,21 +236,29 @@ public class Client {
     }
 
     /**
-     * Get the client IP address.
-     *
-     * @return the client IP address
+     * Start the message receiver from the server.
      */
-    public String getClientIP() {
-        return clientIP;
-    }
+    private void startMessageReceiver() {
+        try(ServerSocket serverSocket = new ServerSocket(clientPort)) {
+           while (true) {
+                Socket s = serverSocket.accept();
 
-    /**
-     * Get the client port.
-     *
-     * @return the client port
-     */
-    public int getClientPort() {
-        return clientPort;
+                InputStream is = s.getInputStream();
+                DataInputStream reader = new DataInputStream(is);
+
+                String responseJson = reader.readUTF();
+                Message response = Message.fromJson(responseJson);
+
+                if (response.getResponse() == Message.ResponseType.PUT_OK) {
+                    keyTimestamps.put(response.getKey(), response.getServerTimestamp());
+                    printPUT(response.getKey(), response.getValue(), response.getServerTimestamp(), response.getServerIP(), response.getServerPort());
+                }
+
+                s.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void main(String[] args) {
@@ -221,6 +285,11 @@ public class Client {
                     for (String server : serverInfos) {
                         client.serverList.add(server.split(":"));
                     }
+
+                    Thread ClientThread = new Thread(() -> {
+                        client.startMessageReceiver();
+                    });
+                    ClientThread.start();
                 } else if (operation.equals("PUT")) {
                     String key = inputParts[1];
                     String value = inputParts[2];

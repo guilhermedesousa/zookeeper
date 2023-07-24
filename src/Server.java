@@ -1,6 +1,8 @@
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -9,6 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import com.google.gson.Gson;
 
 public class Server {
     private String serverIP;
@@ -31,31 +35,25 @@ public class Server {
 
         public void run() {
             try {
-                ObjectOutputStream os = new ObjectOutputStream(node.getOutputStream());
-                ObjectInputStream is = new ObjectInputStream(node.getInputStream());
+                OutputStream os = node.getOutputStream();
+                DataOutputStream writer = new DataOutputStream(os);
 
-                Message message = (Message) is.readObject();
+                InputStream is = node.getInputStream();
+                DataInputStream reader = new DataInputStream(is);
+                
+                String messageJson = reader.readUTF();
+                Message message = Message.fromJson(messageJson);
                 
                 if (message.getOperation() == Message.Operation.PUT) {
-                    Message response = handlePut(message);
-                    os.writeObject(response);
+                    handlePut(message);
                 } else if (message.getOperation() == Message.Operation.REPLICATION) {
                     Message response = handleReplication(message);
-                    os.writeObject(response);
+                    writer.writeUTF(response.toJson());
+                } else if (message.getOperation() == Message.Operation.GET) {
+                    Message response = handleGet(message);
+                    writer.writeUTF(response.toJson());
                 }
-
-                // if (message.getOperation().equals("PUT")) {
-                //     System.out.println("PUT at port " + serverPort);
-                //     Message.ResponseMessage response = handlePut(message);
-                //     os.writeObject(response);
-                // } else if (message.getOperation().equals("REPLICATION")) {
-                //     Message.ResponseMessage response = handleReplication(message);
-                //     os.writeObject(response);
-                // } else if (message.getOperation().equals("GET")) {
-                //     Message.ResponseMessage response = (Message.ResponseMessage) handleGet(message);
-                //     os.writeObject(response);
-                // }
-            } catch (IOException | ClassNotFoundException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         }
@@ -83,10 +81,9 @@ public class Server {
     /**
      * Handle the PUT operation.
      *
-     * @param message the message containing the pair key-value
-     * @return PUT_OK
+     * @param message the message from the client
      */
-    private Message handlePut(Message message) {
+    private void handlePut(Message message) {
         String key = message.getKey();
         String value = message.getValue();
         String clientIP = message.getClientIP();
@@ -100,28 +97,69 @@ public class Server {
             timestamps.put(key, timestamp);
             
             replicate(message);
-            
-            System.out.printf("Enviando PUT_OK ao Cliente %s:%s da key:%s ts:%d%n", clientIP, clientPort, key, timestamp);
-
-            Message response = new Message(Message.ResponseType.PUT_OK);
-            response.setServerTimestamp(timestamp);
-
-            return response;
         } else {
             System.out.printf("Encaminhando PUT key:%s value:%s%n", key, value);
-            return forwardPutToLeader(message);
+            forwardPutToLeader(message);
         }
+    }
+
+    /**
+     * Handle the GET operation.
+     *
+     * @param message the message sent by the client
+     * @return the response
+     */
+    private Message handleGet(Message message) {
+        String key = message.getKey();
+        String clientIP = message.getClientIP();
+        int clientPort = message.getClientPort();
+        long clientTimestamp = message.getClientTimestamp();
+        String value = keyValueStore.get(key);
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("Cliente ").append(clientIP).append(":").append(clientPort).append(" ");
+        sb.append("GET key: ").append(key).append(" ");
+        sb.append("ts: ").append(clientTimestamp).append(". ");
+
+        Message response;
+
+        if (value == null) {
+            response = new Message(Message.ResponseType.NULL);
+            sb.append("Meu ts é NAO_EXISTE").append(", ");
+            sb.append("portanto devolvendo ");
+            sb.append("NULL");
+        } else {
+            long serverTimestamp = timestamps.get(key);
+
+            if (serverTimestamp >= clientTimestamp) {
+                response = new Message(Message.ResponseType.GET_OK);
+                response.setValue(value);
+                response.setServerTimestamp(serverTimestamp);
+
+                sb.append("Meu ts é ").append(serverTimestamp).append(", ");
+                sb.append("portanto devolvendo ");
+                sb.append(value);
+            } else {
+                response = new Message(Message.ResponseType.TRY_OTHER_SERVER_OR_LATER);
+                response.setServerTimestamp(serverTimestamp);
+                
+                sb.append("Meu ts é ").append(serverTimestamp).append(", ");
+                sb.append("portanto devolvendo ");
+                sb.append("TRY_OTHER_SERVER_OR_LATER");
+            }
+        }
+
+        System.out.println(sb.toString());
+        return response;
     }
 
     /**
      * Forward PUT operation to leader.
      *
-     * @param key the key to insert
-     * @param value the value to insert
-     * @param timestamp the timestamp
-     * @return PUT_OK
+     * @param message the message from the client
      */
-    private Message forwardPutToLeader(Message message) {
+    private void forwardPutToLeader(Message message) {
         String key = message.getKey();
         String value = message.getValue();
         String clientIP = message.getClientIP();
@@ -130,21 +168,17 @@ public class Server {
 
         try {
             Socket s = new Socket(leaderIP, leaderPort);
-
-            ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
-            ObjectInputStream is = new ObjectInputStream(s.getInputStream());
+            
+            OutputStream os = s.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(os);
 
             Message forwardedMessage = new Message(Message.Operation.PUT, key, value, clientIP, clientPort);
             forwardedMessage.setClientTimestamp(timestamp);
 
-            os.writeObject(forwardedMessage);
-
-            Message response = (Message) is.readObject();
+            writer.writeUTF(forwardedMessage.toJson());
 
             s.close();
-
-            return response;
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -152,9 +186,7 @@ public class Server {
     /**
      * Replicate the information on other servers.
      *
-     * @param key the key to insert
-     * @param value the value to insert
-     * @param timestamp the associated timestamp
+     * @param message the message from the client
      */
     private void replicate(Message message) {
         String key = message.getKey();
@@ -163,7 +195,10 @@ public class Server {
         int clientPort = message.getClientPort();
         long timestamp = message.getClientTimestamp();
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        int numFollowers = followers.size();
+        AtomicInteger responsesReceived = new AtomicInteger(0);
+
+        ExecutorService executor = Executors.newFixedThreadPool(numFollowers);
 
         for (String[] follower : followers) {
             String followerIP = follower[0];
@@ -173,18 +208,32 @@ public class Server {
                 public void run() {
                     try {
                         Socket s = new Socket(followerIP, followerPort);
+                        
+                        OutputStream os = s.getOutputStream();
+                        DataOutputStream writer = new DataOutputStream(os);
 
-                        ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
-                        ObjectInputStream is = new ObjectInputStream(s.getInputStream());
+                        InputStream is = s.getInputStream();
+                        DataInputStream reader = new DataInputStream(is);
                         
                         Message repMessage = new Message(Message.Operation.REPLICATION, key, value, clientIP, clientPort);
                         repMessage.setServerTimestamp(timestamp);
-                        os.writeObject(repMessage);
 
-                        Message response = (Message) is.readObject();
+                        writer.writeUTF(repMessage.toJson());
+                        
+                        String responseJson = reader.readUTF();
+                        Message response = Message.fromJson(responseJson);
+
+                        if (response.getResponse() == Message.ResponseType.REPLICATION_OK) {
+                            int currentResponses = responsesReceived.incrementAndGet();
+
+                            if (currentResponses == numFollowers) {
+                                System.out.printf("Enviando PUT_OK ao Cliente %s:%s da key:%s ts:%d%n", clientIP, clientPort, key, timestamp);
+                                sendResponse(key, value, clientIP, clientPort, timestamp);
+                            }
+                        }
 
                         s.close();
-                    } catch (IOException | ClassNotFoundException e) {
+                    } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
@@ -219,22 +268,36 @@ public class Server {
         return new Message(Message.ResponseType.REPLICATION_OK);
     }
 
-    // private Message handleGet(Message message) {
-    //     String key = message.getKey();
-    //     String value = keyValueStore.get(key);
+    /**
+     * Send PUT_OK to the client.
+     *
+     * @param key the key inserted
+     * @param value the value inserted
+     * @param clientIP the client IP address
+     * @param clientPort the client port
+     * @param timestamp the timestamp associated to the key
+     */
+    private void sendResponse(String key, String value, String clientIP, int clientPort, long timestamp) {
+        Message response = new Message(Message.ResponseType.PUT_OK);
+        response.setKey(key);
+        response.setValue(value);
+        response.setServerIP(serverIP);
+        response.setServerPort(serverPort);
+        response.setServerTimestamp(timestamp);
 
-    //     Message response;
+        try {
+            Socket s = new Socket(clientIP, clientPort);
 
-    //     if (value == null) {
-    //         response = new Message("NULL");
-    //     } else if (timestamps.get(key) >= message.getClientTimestamp()) {
-    //         response = new Message(value);
-    //     } else {
-    //         response = new Message("TRY_OTHER_SERVER_OR_LATER");
-    //     }
+            OutputStream os = s.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(os);
 
-    //     return response;
-    // }
+            writer.writeUTF(response.toJson());
+
+            s.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }        
+    }
 
     /**
      * Start the server to handle client requests.
@@ -243,8 +306,6 @@ public class Server {
      */
     private void startServer(int port) {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Server running at port " + port);
-
             while (true) {
                 Socket node = serverSocket.accept();
     
@@ -278,13 +339,13 @@ public class Server {
      * Set leader followers.
      */
     private void setFollowers() {
-        if (serverPort == 10097) {
+        if (leaderPort == 10097) {
             followers.add(new String[]{"127.0.0.1", "10098"});
             followers.add(new String[]{"127.0.0.1", "10099"});
-        } else if (serverPort == 10098) {
+        } else if (leaderPort == 10098) {
             followers.add(new String[]{"127.0.0.1", "10097"});
             followers.add(new String[]{"127.0.0.1", "10099"});
-        } else if (serverPort == 10099) {
+        } else if (leaderPort == 10099) {
             followers.add(new String[]{"127.0.0.1", "10097"});
             followers.add(new String[]{"127.0.0.1", "10098"});
         }

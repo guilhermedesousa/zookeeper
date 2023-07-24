@@ -1,6 +1,6 @@
-import java.io.Serializable;
+import com.google.gson.Gson;
 
-public class Message implements Serializable {
+public class Message {
     enum Operation {
         PUT,
         GET,
@@ -9,7 +9,10 @@ public class Message implements Serializable {
 
     enum ResponseType {
         PUT_OK,
-        REPLICATION_OK
+        GET_OK,
+        REPLICATION_OK,
+        NULL,
+        TRY_OTHER_SERVER_OR_LATER
     }
 
     private Operation operation;
@@ -17,9 +20,13 @@ public class Message implements Serializable {
     private String value;
     private String clientIP;
     private int clientPort;
+    private String serverIP;
+    private int serverPort;
     private ResponseType response;
     private long clientTimestamp;
     protected long serverTimestamp;
+
+    public Message() {}
 
     /**
      * Create an instance of Message for PUT and REPLICATION operations.
@@ -27,11 +34,28 @@ public class Message implements Serializable {
      * @param operation PUT
      * @param key the key to insert
      * @param value the value to insert
+     * @param clientIP the client IP address
+     * @param clientPort the client port
      */
     public Message(Operation operation, String key, String value, String clientIP, int clientPort) {
         this.operation = operation;
         this.key = key;
         this.value = value;
+        this.clientIP = clientIP;
+        this.clientPort = clientPort;
+    }
+
+    /**
+     * Create an instance of Message for GET operation.
+     *
+     * @param operation GET
+     * @param key the key to request
+     * @param clientIP the client IP address
+     * @param clientPort the client port
+     */
+    public Message(Operation operation, String key, String clientIP, int clientPort) {
+        this.operation = operation;
+        this.key = key;
         this.clientIP = clientIP;
         this.clientPort = clientPort;
     }
@@ -46,17 +70,26 @@ public class Message implements Serializable {
     }
 
     /**
-     * Create an instance of Message for GET operation
+     * Convert the Message object to a JSON string.
      *
-     * @param operation GET
-     * @param key the key to request
+     * @return the JSON representation of the Message
      */
-    public Message(String operation, String key) {
-        // this.operation = operation;
-        // this.key = key;
-        // this.value = null;
+    public String toJson() {
+        Gson gson = new Gson();
+        return gson.toJson(this);
     }
 
+    /**
+     * Convert a JSON string to a Message object.
+     *
+     * @param json the JSON representation of the Message
+     * @return the Message object
+     */
+    public static Message fromJson(String json) {
+        Gson gson = new Gson();
+        return gson.fromJson(json, Message.class);
+    }
+    
     /**
      * Get the response
      * @return the response type
@@ -84,12 +117,28 @@ public class Message implements Serializable {
     }
 
     /**
+     * Set the key.
+     *
+     * @param key the key
+     */
+    public void setKey(String key) {
+        this.key = key;
+    }
+
+    /**
      * Get the value.
      *
      * @return the value
      */
     public String getValue() {
         return value;
+    }
+
+    /*
+     * Set the value.
+     */
+    public void setValue(String value) {
+        this.value = value;
     }
 
     /**
@@ -108,6 +157,42 @@ public class Message implements Serializable {
      */
     public int getClientPort() {
         return clientPort;
+    }
+
+    /**
+     * Get the server IP address.
+     *
+     * @return the server IP address
+     */
+    public String getServerIP() {
+        return serverIP;
+    }
+
+    /**
+     * Set the server IP address.
+     *
+     * @param serverIP the server IP address
+     */
+    public void setServerIP(String serverIP) {
+        this.serverIP = serverIP;
+    }
+
+    /**
+     * Get the server port.
+     *
+     * @return the server port
+     */
+    public int getServerPort() {
+        return serverPort;
+    }
+
+    /**
+     * Set the server port.
+     *
+     * @param serverPort the server port
+     */
+    public void setServerPort(int serverPort) {
+        this.serverPort = serverPort;
     }
 
     /**
