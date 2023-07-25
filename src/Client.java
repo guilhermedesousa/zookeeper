@@ -100,6 +100,10 @@ public class Client {
         if (response.getResponse() == Message.ResponseType.GET_OK) {
             keyTimestamps.put(key, response.getServerTimestamp());
             printGET(key, response.getValue(), getTimestamp(), response.getServerTimestamp(), serverIP, serverPort);
+        } else if (response.getResponse() == Message.ResponseType.NULL) {
+            printGET(key, "NULL", getTimestamp(), 0L, serverIP, serverPort);
+        } else if (response.getResponse() == Message.ResponseType.TRY_OTHER_SERVER_OR_LATER) {
+            printGET(key, "TRY_OTHER_SERVER_OR_LATER", getTimestamp(), response.getServerTimestamp(), serverIP, serverPort);
         }
     }
 

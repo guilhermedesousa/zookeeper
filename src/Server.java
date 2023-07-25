@@ -132,6 +132,18 @@ public class Server {
         } else {
             long serverTimestamp = timestamps.get(key);
 
+            // Simula o cenário do TRY_OTHER_SERVER_OR_LATER
+            if (key.equals("Kx")) {
+                response = new Message(Message.ResponseType.TRY_OTHER_SERVER_OR_LATER);
+                response.setServerTimestamp(999999);
+
+                sb.append("Meu ts é ").append(serverTimestamp).append(", ");
+                sb.append("portanto devolvendo ");
+                sb.append("TRY_OTHER_SERVER_OR_LATER");
+                
+                return response;
+            }
+
             if (serverTimestamp >= clientTimestamp) {
                 response = new Message(Message.ResponseType.GET_OK);
                 response.setValue(value);
