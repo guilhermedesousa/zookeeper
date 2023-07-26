@@ -82,6 +82,7 @@ public class Server {
      * Handle the PUT operation.
      *
      * @param message the message from the client
+     * @throws InterruptedException
      */
     private void handlePut(Message message) {
         String key = message.getKey();
@@ -95,7 +96,7 @@ public class Server {
 
             keyValueStore.put(key, value);
             timestamps.put(key, timestamp);
-            
+
             replicate(message);
         } else {
             System.out.printf("Encaminhando PUT key:%s value:%s%n", key, value);
@@ -131,18 +132,6 @@ public class Server {
             sb.append("NULL");
         } else {
             long serverTimestamp = timestamps.get(key);
-
-            // Simula o cenário do TRY_OTHER_SERVER_OR_LATER
-            if (key.equals("Kx")) {
-                response = new Message(Message.ResponseType.TRY_OTHER_SERVER_OR_LATER);
-                response.setServerTimestamp(999999);
-
-                sb.append("Meu ts é ").append(serverTimestamp).append(", ");
-                sb.append("portanto devolvendo ");
-                sb.append("TRY_OTHER_SERVER_OR_LATER");
-                
-                return response;
-            }
 
             if (serverTimestamp >= clientTimestamp) {
                 response = new Message(Message.ResponseType.GET_OK);
@@ -230,6 +219,11 @@ public class Server {
                         Message repMessage = new Message(Message.Operation.REPLICATION, key, value, clientIP, clientPort);
                         repMessage.setServerTimestamp(timestamp);
 
+                        // simulate high latency for the key 456
+                        if (key.equals("456")) {
+                            Thread.sleep(20000);
+                        }
+
                         writer.writeUTF(repMessage.toJson());
                         
                         String responseJson = reader.readUTF();
@@ -245,7 +239,7 @@ public class Server {
                         }
 
                         s.close();
-                    } catch (IOException e) {
+                    } catch (IOException | InterruptedException e) {
                         e.printStackTrace();
                     }
                 }
